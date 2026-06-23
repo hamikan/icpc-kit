@@ -276,7 +276,7 @@ def main() -> int:
         type=parse_timeout,
         help=f"seconds before each run is killed (default: {format_seconds(DEFAULT_TIMEOUT_SECONDS)})",
     )
-    parser.add_argument("count", nargs="?", default=1, type=parse_count, help="number of tests to run")
+    parser.add_argument("count", nargs="?", default=100, type=parse_count, help="number of tests to run")
     args = parser.parse_args()
     return run_random_tests(args.count, args.save, args.timeout)
 
