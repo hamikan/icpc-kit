@@ -1,0 +1,8 @@
+.DS_Store
+a.out
+submit.cpp
+combined.cpp
+*.dSYM/
+__pycache__/
+work*/**/randomTest/.rt/
+.vscode/

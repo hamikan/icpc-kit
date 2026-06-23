@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${ICPC_KIT:-}" ]; then
+  ROOT="$ICPC_KIT"
+else
+  ROOT="$(CDPATH= cd -P "$(dirname "$0")/.." && pwd)"
+fi
+
+if [ ! -f main.cpp ]; then
+  echo "ace: main.cpp not found in current directory" >&2
+  exit 1
+fi
+
+expander="$ROOT/ac-library/expander.py"
+if [ ! -f "$expander" ]; then
+  echo "ace: $expander not found" >&2
+  echo "ace: place the official AtCoder Library under $ROOT/ac-library" >&2
+  exit 1
+fi
+
+python3 "$expander" --lib "$ROOT/ac-library" main.cpp
+
+if [ ! -f combined.cpp ]; then
+  echo "ace: expander did not create combined.cpp" >&2
+  exit 1
+fi
+
+mv -f combined.cpp submit.cpp
+echo "created submit.cpp"

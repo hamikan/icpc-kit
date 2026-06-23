@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -u
+
+failures=0
+
+pass() {
+  printf 'OK   %s\n' "$1"
+}
+
+fail() {
+  printf 'FAIL %s\n' "$1"
+  failures=$((failures + 1))
+}
+
+ng() {
+  printf 'NG   %s\n' "$1"
+}
+
+check_command() {
+  if command -v "$1" >/dev/null 2>&1; then
+    pass "$1"
+  else
+    fail "$1"
+  fi
+}
+
+check_compile_feature() {
+  label="$1"
+  source="$2"
+  shift 2
+
+  feature_tmp_dir="$(mktemp -d 2>/dev/null || mktemp -d -t icpc-kit-check)"
+  feature_src="$feature_tmp_dir/main.cpp"
+  feature_bin="$feature_tmp_dir/main"
+  printf '%s\n' "$source" > "$feature_src"
+
+  if "${selected_cxx_cmd[@]}" "$@" "$feature_src" -o "$feature_bin" >/dev/null 2>&1; then
+    pass "$label"
+  else
+    ng "$label"
+  fi
+
+  rm -rf "$feature_tmp_dir"
+}
+
+check_compile_features() {
+  echo "[INFO] compiler feature checks"
+  check_compile_feature "option -std=gnu++20" \
+    "int main(){return 0;}" \
+    -std=gnu++20
+  check_compile_feature "option -O2" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -O2
+  check_compile_feature "option -Wall -Wextra -Wshadow" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -Wall -Wextra -Wshadow
+  check_compile_feature "option -DLOCAL" \
+    "#ifndef LOCAL
+#error LOCAL is not defined
+#endif
+int main(){return 0;}" \
+    -std=gnu++20 -DLOCAL
+  check_compile_feature "option -g" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -g
+  check_compile_feature "option -fsanitize=undefined" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -fsanitize=undefined
+  check_compile_feature "option -fsanitize=address" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -fsanitize=address
+  check_compile_feature "option -fsanitize=undefined,address" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -fsanitize=undefined,address
+  check_compile_feature "option -fno-sanitize-recover=all" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -fno-sanitize-recover=all
+  check_compile_feature "option -fno-omit-frame-pointer" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -fno-omit-frame-pointer
+  check_compile_feature "rt full sanitizer flags" \
+    "int main(){return 0;}" \
+    -std=gnu++20 -O2 -Wall -Wextra -Wshadow -DLOCAL -fsanitize=undefined,address -fno-sanitize-recover=all -fno-omit-frame-pointer -g
+  check_compile_feature "header bits/stdc++.h" \
+    "#include <bits/stdc++.h>
+int main(){return 0;}" \
+    -std=gnu++20
+  check_compile_feature "header atcoder/all" \
+    "#include <atcoder/all>
+int main(){atcoder::dsu d(1); return d.leader(0);}" \
+    -std=gnu++20 -I "$ICPC_KIT/ac-library"
+}
+
+check_selected_cxx() {
+  selected_cxx="${CXX:-g++}"
+  read -r -a selected_cxx_cmd <<< "$selected_cxx"
+  echo "[INFO] CXX=$selected_cxx"
+
+  if command -v "${selected_cxx_cmd[0]}" >/dev/null 2>&1; then
+    "${selected_cxx_cmd[@]}" --version | head -n 1
+  else
+    fail "CXX not found: $selected_cxx"
+    return
+  fi
+
+  if "${selected_cxx_cmd[@]}" --version 2>/dev/null | grep -qi "Apple clang"; then
+    echo "[WARN] CXX is Apple clang. bits/stdc++.h may not work."
+  fi
+
+  check_compile_features
+}
+
+if [ -n "${ICPC_KIT:-}" ]; then
+  pass "ICPC_KIT=$ICPC_KIT"
+else
+  echo "FAIL ICPC_KIT is not set. Run: source init.sh" >&2
+  exit 1
+fi
+
+check_selected_cxx
+
+check_command python3
+check_command g++
+check_command oj
+check_command nw
+check_command rt
+check_command ace
+
+if [ "$failures" -eq 0 ]; then
+  echo "All required checks passed."
+else
+  echo "$failures check(s) failed." >&2
+fi
+
+exit "$failures"
