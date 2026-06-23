@@ -1,0 +1,9 @@
+{
+  "github.copilot.enable": {
+    "*": false
+  },
+  "files.autoSave": "onFocusChange",
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "editor.formatOnSave": false
+}
