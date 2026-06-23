@@ -6,3 +6,4 @@ combined.cpp
 __pycache__/
 work*/**/randomTest/.rt/
 .vscode/
+my-library/**/test/

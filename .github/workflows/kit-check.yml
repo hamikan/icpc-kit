@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check shell scripts
-        run: bash -n init.sh bin/check bin/nw bin/rt bin/ace
+        run: bash -n init.sh bin/check bin/nw bin/rt bin/ace bin/lib
 
       - name: Run kit checks
         run: env PYTHONDONTWRITEBYTECODE=1 python3 scripts/kit_check/kit_check.py

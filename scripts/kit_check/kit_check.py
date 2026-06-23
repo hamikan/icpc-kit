@@ -28,6 +28,19 @@ def load_random_test_module():
     return module
 
 
+def load_library_insert_module():
+    spec = importlib.util.spec_from_file_location(
+        "library_insert",
+        ROOT / "scripts" / "library_insert" / "library_insert.py",
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class SampleSlotTests(unittest.TestCase):
     def setUp(self) -> None:
         self.random_test = load_random_test_module()
@@ -462,7 +475,7 @@ class CheckCommandTests(unittest.TestCase):
         (self.root / "bin").mkdir()
         shutil.copy2(ROOT / "bin" / "check", self.root / "bin" / "check")
 
-        for command in ["python3", "g++", "oj", "nw", "rt", "ace"]:
+        for command in ["python3", "g++", "oj", "nw", "rt", "ace", "lib"]:
             path = self.fake_bin / command
             path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             path.chmod(0o755)
@@ -489,6 +502,7 @@ class CheckCommandTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("OK   nw", result.stdout)
+        self.assertIn("OK   lib", result.stdout)
         self.assertIn("[INFO] compiler feature checks", result.stdout)
         self.assertNotIn("template/", result.stdout)
 
@@ -508,6 +522,189 @@ class RtCommandTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("number of tests to run", result.stdout)
+
+
+class LibraryInsertUnitTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.library_insert = load_library_insert_module()
+
+    def test_duplicate_removal_only_targets_prologue_lines(self) -> None:
+        body = (
+            "using ll = long long;\n"
+            "\n"
+            "template<typename T>\n"
+            "struct Box {};\n"
+        )
+        source = (
+            "using ll = long long;\n"
+            "\n"
+            "template<typename T>\n"
+            "struct Existing {};\n"
+        )
+
+        result = self.library_insert.remove_duplicate_prologue_lines(body, source)
+
+        self.assertNotIn("using ll = long long;", result)
+        self.assertIn("template<typename T>", result)
+        self.assertIn("struct Box", result)
+
+    def test_duplicate_non_prologue_line_at_top_is_kept(self) -> None:
+        body = (
+            "template<typename T>\n"
+            "struct Box {};\n"
+        )
+
+        result = self.library_insert.remove_duplicate_prologue_lines(body, body)
+
+        self.assertEqual(result, body)
+
+    def test_using_alias_duplicate_ignores_atcoder_namespace_for_comparison_only(self) -> None:
+        body = (
+            "using mint = atcoder::modint998244353;\n"
+            "\n"
+            "struct Box {};\n"
+        )
+        source = "using mint = modint998244353;\n"
+
+        result = self.library_insert.remove_duplicate_prologue_lines(body, source)
+
+        self.assertNotIn("using mint", result)
+        self.assertIn("struct Box", result)
+
+    def test_atcoder_namespace_is_not_removed_from_inserted_code(self) -> None:
+        body = (
+            "using mint = atcoder::modint998244353;\n"
+            "\n"
+            "struct Box {};\n"
+        )
+
+        result = self.library_insert.remove_duplicate_prologue_lines(body, "")
+
+        self.assertIn("using mint = atcoder::modint998244353;", result)
+
+
+class LibraryCommandTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.problem_dir = Path(self.tmp.name)
+        self.main_cpp = self.problem_dir / "main.cpp"
+        self.main_cpp.write_text(
+            "#include <bits/stdc++.h>\n"
+            "using namespace std;\n"
+            "\n"
+            "#define rep(i, n) for (int i=0; i<n; i++)\n"
+            "\n"
+            "int main() {\n"
+            "    return 0;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def run_lib(self, *args: str) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "ICPC_KIT": str(ROOT)}
+        return subprocess.run(
+            [str(ROOT / "bin" / "lib"), *args],
+            cwd=self.problem_dir,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    def test_inserts_library_before_main(self) -> None:
+        result = self.run_lib("seg")
+
+        source = self.main_cpp.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(source.index("struct SegTree"), source.index("int main()"))
+        self.assertEqual(source.count("#include <bits/stdc++.h>"), 1)
+        self.assertIn("inserted: seg", result.stdout)
+
+    def test_keeps_include_using_define_group_together(self) -> None:
+        self.main_cpp.write_text(
+            "#include <bits/stdc++.h>\n"
+            "using namespace std;\n"
+            "\n"
+            "int main() {\n"
+            "    return 0;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        result = self.run_lib("bit")
+
+        source = self.main_cpp.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "#include <bits/stdc++.h>\n"
+            "using namespace std;\n"
+            "using ll = long long;\n"
+            "\n"
+            "struct Ops",
+            source,
+        )
+
+    def test_skips_duplicate_prologue_lines(self) -> None:
+        self.main_cpp.write_text((ROOT / "template" / "2" / "main.cpp").read_text(encoding="utf-8"), encoding="utf-8")
+
+        result = self.run_lib("bit")
+
+        source = self.main_cpp.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(source.count("using ll = long long;"), 1)
+        self.assertLess(source.index("struct Ops"), source.index("int main()"))
+        self.assertIn("inserted: bit", result.stdout)
+
+    def test_accepts_uppercase_name(self) -> None:
+        result = self.run_lib("UF")
+
+        source = self.main_cpp.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertLess(source.index("struct UnionFind"), source.index("int main()"))
+        self.assertIn("inserted: uf", result.stdout)
+
+    def test_rejects_hyphen_prefixed_library_name(self) -> None:
+        result = self.run_lib("-uf")
+
+        source = self.main_cpp.read_text(encoding="utf-8")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not start with '-'", result.stderr)
+        self.assertNotIn("struct UnionFind", source)
+
+    def test_rejects_double_hyphen_library_name(self) -> None:
+        result = self.run_lib("--bit")
+
+        source = self.main_cpp.read_text(encoding="utf-8")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not start with '-'", result.stderr)
+        self.assertNotIn("FenwickTree", source)
+
+    def test_does_not_insert_same_library_twice(self) -> None:
+        first = self.run_lib("seg")
+        second = self.run_lib("seg")
+
+        source = self.main_cpp.read_text(encoding="utf-8")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(source.count("struct SegTree"), 1)
+        self.assertIn("already inserted: seg", second.stdout)
+
+    def test_library_insert_uses_in_place_write(self) -> None:
+        source = (ROOT / "scripts" / "library_insert" / "library_insert.py").read_text(encoding="utf-8")
+
+        self.assertIn('path.open("r+", encoding="utf-8")', source)
+        self.assertNotIn("main_cpp.write_text", source)
+
+    def test_list_shows_available_libraries(self) -> None:
+        result = self.run_lib("--list")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("seg", result.stdout)
+        self.assertIn("uf", result.stdout)
 
 
 class NewWorkCommandTests(unittest.TestCase):
