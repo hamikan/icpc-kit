@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -z "${ICPC_KIT:-}" ]; then
+  echo "rt: source init.sh first" >&2
+  exit 1
+fi
+
+python3 -u "$ICPC_KIT/scripts/random_test/random_test.py" "$@"
