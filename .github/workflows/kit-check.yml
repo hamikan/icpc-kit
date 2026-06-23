@@ -1,0 +1,19 @@
+name: Kit Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  kit-check:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check shell scripts
+        run: bash -n init.sh bin/check bin/nw bin/rt bin/ace
+
+      - name: Run kit checks
+        run: env PYTHONDONTWRITEBYTECODE=1 python3 scripts/kit_check/kit_check.py

@@ -10,14 +10,6 @@ check
 `source init.sh` はこのシェルだけに `ICPC_KIT`, `ICPC_ENV`, `PATH`, `CPLUS_INCLUDE_PATH` を設定します。`.zshrc` などは変更しません。
 `CXX` が未設定の場合は、利用可能な `g++-15`, `g++-14`, `g++-13`, Homebrew GCC, `g++` の順に選びます。
 
-## キットの確認
-
-キット自体を修正した後は、必要に応じて次を実行します。
-
-```bash
-env PYTHONDONTWRITEBYTECODE=1 python3 scripts/kit_check/kit_check.py
-```
-
 ## 新しい作業環境
 
 ```bash
@@ -74,3 +66,13 @@ ace
 ## 自作ライブラリ
 
 自作ライブラリは `my-library/` から必要なコードをコピーして使います。提出コードから `my-library/` を `#include` しないでください。
+
+## 開発者向けテスト
+
+キット自体を修正した後は、次を実行します。
+
+```bash
+env PYTHONDONTWRITEBYTECODE=1 python3 scripts/kit_check/kit_check.py
+```
+
+これは `rt`, `nw`, `init.sh`, `check` の実装が壊れていないかを確認します。GitHub Actions でも push / pull request のたびに同じ検査を実行します。

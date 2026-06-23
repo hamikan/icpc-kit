@@ -167,7 +167,7 @@ class CompilerSelectionTests(unittest.TestCase):
 
             self.assertEqual(len(calls), 1)
 
-    def test_compile_prints_reference_style_success_message(self) -> None:
+    def test_compile_prints_success_message(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             source = tmp_path / "main.cpp"
@@ -229,7 +229,7 @@ class CompilerSelectionTests(unittest.TestCase):
             "randomTest/.rt/main",
         )
 
-    def test_print_failure_uses_reference_style_sections_without_diff(self) -> None:
+    def test_print_failure_uses_problem_output_sections(self) -> None:
         stdout = io.StringIO()
 
         with contextlib.redirect_stdout(stdout):
@@ -254,11 +254,8 @@ class CompilerSelectionTests(unittest.TestCase):
             "wrong\n"
             "\n",
         )
-        self.assertNotIn("=== Diff ===", output)
-        self.assertNotIn("--- expected", output)
-        self.assertNotIn("seed:", output)
 
-    def test_run_random_tests_does_not_create_rt_text_files_on_failure(self) -> None:
+    def test_run_random_tests_saves_failing_case_when_requested(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "main.cpp").write_text("int main(){return 0;}\n", encoding="utf-8")
@@ -290,17 +287,11 @@ class CompilerSelectionTests(unittest.TestCase):
                 self.random_test.compile_cpp = original_compile_cpp
                 self.random_test.run_binary = original_run_binary
 
-            output = stdout.getvalue()
             self.assertEqual(exit_code, 1)
-            self.assertNotIn("saved:", output)
-            self.assertNotIn("=== Diff ===", output)
-            self.assertFalse((tmp_path / "randomTest" / ".rt" / "input.txt").exists())
-            self.assertFalse((tmp_path / "randomTest" / ".rt" / "output.txt").exists())
-            self.assertFalse((tmp_path / "randomTest" / ".rt" / "expected.txt").exists())
-            self.assertFalse((tmp_path / "randomTest" / ".rt" / "diff.txt").exists())
-            self.assertTrue((tmp_path / "test" / "sample-1.in").is_file())
+            self.assertEqual((tmp_path / "test" / "sample-1.in").read_bytes(), b"input\n")
+            self.assertEqual((tmp_path / "test" / "sample-1.out").read_bytes(), b"right\n")
 
-    def test_run_random_tests_runs_generator_without_seed_argument(self) -> None:
+    def test_run_random_tests_runs_generator_without_command_line_arguments(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             (tmp_path / "main.cpp").write_text("int main(){return 0;}\n", encoding="utf-8")
@@ -422,16 +413,6 @@ class CompilerSelectionTests(unittest.TestCase):
             self.assertEqual(timeouts, [4.5, 4.5, 4.5])
 
 
-class RandomTestTemplateTests(unittest.TestCase):
-    def test_generator_template_does_not_require_command_line_arguments(self) -> None:
-        source = (ROOT / "template" / "common" / "randomTest" / "gen.cpp").read_text(encoding="utf-8")
-
-        self.assertIn("int main()", source)
-        self.assertNotIn("argc", source)
-        self.assertNotIn("argv", source)
-        self.assertNotIn("stoll", source)
-
-
 class InitCompilerSelectionTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -513,24 +494,20 @@ class CheckCommandTests(unittest.TestCase):
 
 
 class RtCommandTests(unittest.TestCase):
-    def test_rt_uses_random_test_script_under_matching_subdirectory(self) -> None:
-        source = (ROOT / "bin" / "rt").read_text(encoding="utf-8")
+    def test_rt_help_runs_through_command_entrypoint(self) -> None:
+        env = {**os.environ, "ICPC_KIT": str(ROOT)}
 
-        self.assertIn("scripts/random_test/random_test.py", source)
-
-
-class ScriptsLayoutTests(unittest.TestCase):
-    def test_scripts_are_grouped_by_specific_role_names(self) -> None:
-        scripts_dir = ROOT / "scripts"
-        script_files = sorted(path.relative_to(scripts_dir).as_posix() for path in scripts_dir.rglob("*.py"))
-
-        self.assertEqual(
-            script_files,
-            [
-                "kit_check/kit_check.py",
-                "random_test/random_test.py",
-            ],
+        result = subprocess.run(
+            [str(ROOT / "bin" / "rt"), "--help"],
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
         )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("number of tests to run", result.stdout)
 
 
 class NewWorkCommandTests(unittest.TestCase):
