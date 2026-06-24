@@ -712,6 +712,7 @@ class NewWorkCommandTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         shutil.copytree(ROOT / "bin", self.root / "bin")
+        shutil.copytree(ROOT / "scripts" / "new_work", self.root / "scripts" / "new_work")
         shutil.copytree(ROOT / "template", self.root / "template")
 
     def tearDown(self) -> None:
@@ -728,25 +729,52 @@ class NewWorkCommandTests(unittest.TestCase):
             check=False,
         )
 
+    def test_nw_uses_python_implementation(self) -> None:
+        wrapper = (ROOT / "bin" / "nw").read_text(encoding="utf-8")
+
+        self.assertIn("scripts/new_work/new_work.py", wrapper)
+        self.assertTrue((ROOT / "scripts" / "new_work" / "new_work.py").is_file())
+
     def test_creates_next_work_with_all_problem_directories(self) -> None:
         for index in range(1, 4):
-            (self.root / f"work{index}").mkdir()
+            (self.root / "ICPC" / f"work{index}").mkdir(parents=True)
 
-        result = self.run_nw("2")
+        result = self.run_nw("--template", "2")
 
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("template/2", result.stdout)
         for problem in "ABCDEFGHI":
-            problem_dir = self.root / "work4" / problem
+            problem_dir = self.root / "ICPC" / "work4" / problem
             self.assertTrue((problem_dir / "main.cpp").is_file())
             self.assertTrue((problem_dir / "main.py").is_file())
             self.assertTrue((problem_dir / "test" / "sample-1.in").is_file())
             self.assertTrue((problem_dir / "randomTest" / "gen.cpp").is_file())
 
-    def test_invalid_template_falls_back_to_template_1(self) -> None:
-        result = self.run_nw("abc")
+    def test_creates_named_work_directory(self) -> None:
+        result = self.run_nw("--name", "2026")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("template/1", result.stdout)
+        self.assertIn("created", result.stdout)
+        for problem in "ABCDEFGHI":
+            self.assertTrue((self.root / "ICPC" / "2026" / problem / "main.cpp").is_file())
+
+    def test_invalid_template_falls_back_to_default_template(self) -> None:
+        result = self.run_nw("--template", "abc")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("template/default", result.stdout)
+
+    def test_positional_template_argument_is_rejected(self) -> None:
+        result = self.run_nw("2")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown argument", result.stderr)
+
+    def test_invalid_name_is_rejected(self) -> None:
+        result = self.run_nw("--name", "../contest")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid name", result.stderr)
 
 
 if __name__ == "__main__":

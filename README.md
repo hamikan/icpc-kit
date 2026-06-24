@@ -16,11 +16,17 @@ check
 ## 作業ディレクトリ作成コマンド
 
 ```bash
-nw      # template/1 を使って次の work を作成
-nw 1    # template/1
-nw 2    # template/2
-nw 3    # template/3
+nw                  # template/default を使って ICPC/workN を作成
+nw -t 2             # template/2 を使って ICPC/workN を作成
+nw --template 3     # template/3 を使って ICPC/workN を作成
+nw -n 2026          # template/default を使って ICPC/2026 を作成
+nw --name 2025      # template/default を使って ICPC/2025 を作成
+nw -n 2026 -t 2     # template/2 を使って ICPC/2026 を作成
 ```
+
+存在しないテンプレートを指定した場合は `template/default` が使われます。
+テンプレートは `-t` または `--template` で指定します。
+フォルダ名は `-n` または `--name` で指定します。
 
 ## 通常テスト
 
@@ -74,5 +80,5 @@ lib --list # 使えるコマンド一覧を表示
 env PYTHONDONTWRITEBYTECODE=1 python3 scripts/kit_check/kit_check.py
 ```
 
-これは `rt`, `nw`, `init.sh`, `check` の実装が壊れていないかを確認します。
+これは `rt`, `nw`, `lib`, `init.sh`, `check` の実装が壊れていないかを確認します。
 GitHub Actions でも push / pull request のたびに同じ検査を実行します。
