@@ -13,20 +13,25 @@ check
 ```
 最後に `All required checks passed.` と出ればOK
 
+## テンプレートの作成
+
+template/default ディレクトリをコピーして template フォルダに好きな名前のディレクトリを作成する
+
 ## 作業ディレクトリ作成コマンド
 
 ```bash
 nw                  # template/default を使って ICPC/workN を作成
 nw -t 2             # template/2 を使って ICPC/workN を作成
-nw --template 3     # template/3 を使って ICPC/workN を作成
+nw --template mikan # template/mikan を使って ICPC/workN を作成
 nw -n 2026          # template/default を使って ICPC/2026 を作成
 nw --name 2025      # template/default を使って ICPC/2025 を作成
-nw -n 2026 -t 2     # template/2 を使って ICPC/2026 を作成
+nw -n mikan -t 2     # template/2 を使って ICPC/mikan を作成
 ```
 
 存在しないテンプレートを指定した場合は `template/default` が使われます。
 テンプレートは `-t` または `--template` で指定します。
 フォルダ名は `-n` または `--name` で指定します。
+指定したテンプレートに `randomTest` がない場合は、`template/default/randomTest` のものが使われます。
 
 ## 通常テスト
 
