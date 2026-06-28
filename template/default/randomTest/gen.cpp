@@ -22,6 +22,8 @@ int rndint(int l, int r) {
 }
 
 int main(){
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
     int N = rndint(1, 10), T = rndint(3, 5);
     while(T--) {
         cout << N << endl;

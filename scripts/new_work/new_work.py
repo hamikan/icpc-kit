@@ -78,12 +78,16 @@ def resolve_template(root: Path, template_id: str) -> Tuple[str, Path]:
     return template_id, template_dir
 
 
-def require_common_template(root: Path) -> Tuple[Path, Path]:
-    test_dir = root / "template" / "common" / "test"
-    random_test_dir = root / "template" / "common" / "randomTest"
-    if not test_dir.is_dir() or not random_test_dir.is_dir():
-        raise NewWorkError("template/common is missing")
-    return test_dir, random_test_dir
+def resolve_template_directory(root: Path, template_dir: Path, dirname: str) -> Path:
+    candidate = template_dir / dirname
+    if candidate.is_dir():
+        return candidate
+
+    default_candidate = root / "template" / "default" / dirname
+    if default_candidate.is_dir():
+        return default_candidate
+
+    raise NewWorkError(f"template/default/{dirname} is missing")
 
 
 def validate_work_name(work_name: str) -> None:
@@ -104,7 +108,8 @@ def next_work_dir(workspace_root: Path) -> Path:
 
 def create_work(root: Path, options: Options) -> Tuple[Path, str]:
     template_id, template_dir = resolve_template(root, options.template_id)
-    test_dir, random_test_dir = require_common_template(root)
+    test_dir = resolve_template_directory(root, template_dir, "test")
+    random_test_dir = resolve_template_directory(root, template_dir, "randomTest")
     workspace_root = root / "ICPC"
 
     if options.work_name is not None:

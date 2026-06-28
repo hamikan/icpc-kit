@@ -750,6 +750,40 @@ class NewWorkCommandTests(unittest.TestCase):
             self.assertTrue((problem_dir / "test" / "sample-1.in").is_file())
             self.assertTrue((problem_dir / "randomTest" / "gen.cpp").is_file())
 
+    def test_default_template_contains_shared_directories(self) -> None:
+        self.assertTrue((ROOT / "template" / "default" / "test" / "sample-1.in").is_file())
+        self.assertTrue((ROOT / "template" / "default" / "randomTest" / "gen.cpp").is_file())
+        self.assertTrue((ROOT / "template" / "default" / "randomTest" / "naive.cpp").is_file())
+
+    def test_missing_test_directories_fall_back_to_default_template(self) -> None:
+        (self.root / "template" / "default" / "randomTest" / "gen.cpp").write_text("default random\n", encoding="utf-8")
+        (self.root / "template" / "mikan").mkdir()
+        shutil.copy2(self.root / "template" / "2" / "main.cpp", self.root / "template" / "mikan" / "main.cpp")
+        shutil.copy2(self.root / "template" / "2" / "main.py", self.root / "template" / "mikan" / "main.py")
+
+        result = self.run_nw("--template", "mikan", "--name", "mikan")
+
+        problem_dir = self.root / "ICPC" / "mikan" / "A"
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((problem_dir / "randomTest" / "gen.cpp").read_text(encoding="utf-8"), "default random\n")
+        self.assertTrue((problem_dir / "test" / "sample-1.in").is_file())
+
+    def test_template_specific_random_test_directory_is_used_when_present(self) -> None:
+        template_dir = self.root / "template" / "mikan"
+        random_test_dir = template_dir / "randomTest"
+        template_dir.mkdir()
+        random_test_dir.mkdir()
+        shutil.copy2(self.root / "template" / "2" / "main.cpp", template_dir / "main.cpp")
+        shutil.copy2(self.root / "template" / "2" / "main.py", template_dir / "main.py")
+        (random_test_dir / "gen.cpp").write_text("mikan random\n", encoding="utf-8")
+
+        result = self.run_nw("--template", "mikan", "--name", "mikan")
+
+        problem_dir = self.root / "ICPC" / "mikan" / "A"
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((problem_dir / "randomTest" / "gen.cpp").read_text(encoding="utf-8"), "mikan random\n")
+        self.assertTrue((problem_dir / "test" / "sample-1.in").is_file())
+
     def test_creates_named_work_directory(self) -> None:
         result = self.run_nw("--name", "2026")
 
