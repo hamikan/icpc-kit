@@ -126,6 +126,7 @@ check_command nw
 check_command rt
 check_command ace
 check_command lib
+check_command st
 
 if [ "$failures" -eq 0 ]; then
   echo "All required checks passed."

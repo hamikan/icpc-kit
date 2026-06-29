@@ -31,7 +31,8 @@ nw -n mikan -t 2     # template/2 を使って ICPC/mikan を作成
 存在しないテンプレートを指定した場合は `template/default` が使われます。
 テンプレートは `-t` または `--template` で指定します。
 フォルダ名は `-n` または `--name` で指定します。
-指定したテンプレートに `randomTest` がない場合は、`template/default/randomTest` のものが使われます。
+指定したテンプレートに `test` や `randomTest` がない場合は、`template/default` のものが使われます。
+各問題ディレクトリには、配布テストケースを置くための空の `secret` ディレクトリも作成されます。
 
 ## 通常テスト
 
@@ -54,6 +55,22 @@ rt --timeout 5 1000 # タイムアウトを設定
 ```
 
 `コンパイルされたファイル` より `cppファイル` の方が新しければ自動で新しくコンパイルされます。
+
+## 配布テストケース
+
+ICPC模擬・本番・過去問などで配布された入力と出力は、問題ディレクトリの `secret` にそのまま置きます。
+
+```bash
+st          # デフォルトで st in out
+st in out   # secret/NAME.in と secret/NAME.out をテスト
+st _ out    # secret/NAME と secret/NAME.out をテスト
+st in _     # secret/NAME.in と secret/NAME をテスト
+st -t 5 in out
+st --reset  # ペナをリセット
+```
+
+`.` 付きの拡張子は指定しません。`_` は拡張子なしを表します。
+出力は空白区切りで比較され、WA / TLE / RE はペナに含まれます。CE はペナに含まれません。
 
 ## ACL
 
@@ -85,5 +102,5 @@ lib --list # 使えるコマンド一覧を表示
 env PYTHONDONTWRITEBYTECODE=1 python3 scripts/kit_check/kit_check.py
 ```
 
-これは `rt`, `nw`, `lib`, `init.sh`, `check` の実装が壊れていないかを確認します。
+これは `rt`, `st`, `nw`, `lib`, `init.sh`, `check` の実装が壊れていないかを確認します。
 GitHub Actions でも push / pull request のたびに同じ検査を実行します。

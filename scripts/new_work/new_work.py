@@ -129,6 +129,7 @@ def create_work(root: Path, options: Options) -> Tuple[Path, str]:
         shutil.copy2(template_dir / "main.py", problem_dir / "main.py")
         shutil.copytree(test_dir, problem_dir / "test")
         shutil.copytree(random_test_dir, problem_dir / "randomTest")
+        (problem_dir / "secret").mkdir()
 
     return work_dir, template_id
 
