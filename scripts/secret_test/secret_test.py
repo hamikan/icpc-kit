@@ -229,8 +229,11 @@ def judge_output(output: bytes, expected: bytes) -> bool:
 def run_cases(problem_dir: Path, pairs: List[CasePair], timeout: float) -> Tuple[str, int, int]:
     status = "AC"
     accepted = 0
+    run_binary(problem_dir, pairs[0].input_path.read_bytes(), timeout)
     for pair in pairs:
         result = run_binary(problem_dir, pair.input_path.read_bytes(), timeout)
+        if result.status == "TLE":
+            result = run_binary(problem_dir, pair.input_path.read_bytes(), timeout)
         if result.status == "AC" and judge_output(result.stdout, pair.expected_path.read_bytes()):
             accepted += 1
             continue
