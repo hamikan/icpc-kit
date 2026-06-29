@@ -41,6 +41,19 @@ def load_library_insert_module():
     return module
 
 
+def load_secret_test_module():
+    spec = importlib.util.spec_from_file_location(
+        "secret_test",
+        ROOT / "scripts" / "secret_test" / "secret_test.py",
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 class SampleSlotTests(unittest.TestCase):
     def setUp(self) -> None:
         self.random_test = load_random_test_module()
@@ -475,7 +488,7 @@ class CheckCommandTests(unittest.TestCase):
         (self.root / "bin").mkdir()
         shutil.copy2(ROOT / "bin" / "check", self.root / "bin" / "check")
 
-        for command in ["python3", "g++", "oj", "nw", "rt", "ace", "lib"]:
+        for command in ["python3", "g++", "oj", "nw", "rt", "ace", "lib", "st"]:
             path = self.fake_bin / command
             path.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
             path.chmod(0o755)
@@ -503,6 +516,7 @@ class CheckCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("OK   nw", result.stdout)
         self.assertIn("OK   lib", result.stdout)
+        self.assertIn("OK   st", result.stdout)
         self.assertIn("[INFO] compiler feature checks", result.stdout)
         self.assertNotIn("template/", result.stdout)
 
@@ -522,6 +536,178 @@ class RtCommandTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("number of tests to run", result.stdout)
+
+
+class SecretTestUnitTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.secret_test = load_secret_test_module()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.problem_dir = Path(self.tmp.name)
+        self.secret_dir = self.problem_dir / "secret"
+        self.secret_dir.mkdir()
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_pairs_cases_by_extension_name(self) -> None:
+        (self.secret_dir / "sample.in").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "sample.out").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / ".DS_Store").write_text("ignored\n", encoding="utf-8")
+
+        pairs = self.secret_test.collect_case_pairs(self.secret_dir, "in", "out")
+
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0].name, "sample")
+
+    def test_pairs_cases_with_missing_input_extension(self) -> None:
+        (self.secret_dir / "sample").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "sample.out").write_text("1\n", encoding="utf-8")
+
+        pairs = self.secret_test.collect_case_pairs(self.secret_dir, "_", "out")
+
+        self.assertEqual(len(pairs), 1)
+        self.assertEqual(pairs[0].input_path.name, "sample")
+        self.assertEqual(pairs[0].expected_path.name, "sample.out")
+
+    def test_rejects_dot_prefixed_extension(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must not start with"):
+            self.secret_test.normalize_extension(".in")
+
+    def test_rejects_same_extensions(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be different"):
+            self.secret_test.validate_extensions("in", "in")
+
+    def test_formats_penalty_results(self) -> None:
+        self.assertEqual(self.secret_test.format_verdict("AC", 0, 8, 8), "AC 8 / 8")
+        self.assertEqual(self.secret_test.format_verdict("AC", 2, 14, 14), "AC(2) 14 / 14")
+        self.assertEqual(self.secret_test.format_verdict("WA", 3, 10, 14), "WA(3) 10 / 14")
+
+    def test_run_cases_keeps_running_and_prefers_highest_priority_status(self) -> None:
+        for name in ["ac", "wa", "re", "tle"]:
+            (self.secret_dir / f"{name}.in").write_text(name, encoding="utf-8")
+            (self.secret_dir / f"{name}.out").write_text("ok", encoding="utf-8")
+        pairs = self.secret_test.collect_case_pairs(self.secret_dir, "in", "out")
+        calls: list[str] = []
+        original_run_binary = self.secret_test.run_binary
+
+        def fake_run_binary(problem_dir: Path, input_data: bytes, timeout: float):
+            name = input_data.decode()
+            calls.append(name)
+            if name == "ac":
+                return self.secret_test.RunResult(status="AC", stdout=b"ok\n", returncode=0)
+            if name == "wa":
+                return self.secret_test.RunResult(status="AC", stdout=b"wrong\n", returncode=0)
+            if name == "re":
+                return self.secret_test.RunResult(status="RE", stdout=b"", returncode=1)
+            return self.secret_test.RunResult(status="TLE", stdout=b"", returncode=124)
+
+        self.secret_test.run_binary = fake_run_binary
+        try:
+            result = self.secret_test.run_cases(self.problem_dir, pairs, timeout=2.0)
+        finally:
+            self.secret_test.run_binary = original_run_binary
+
+        self.assertEqual(result, ("TLE", 1, 4))
+        self.assertEqual(calls, ["ac", "re", "tle", "wa"])
+
+
+class SecretTestCommandTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.problem_dir = Path(self.tmp.name)
+        self.secret_dir = self.problem_dir / "secret"
+        self.secret_dir.mkdir()
+        self.main_cpp = self.problem_dir / "main.cpp"
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def run_st(self, *args: str) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "ICPC_KIT": str(ROOT), "CXX": os.environ.get("CXX", "g++")}
+        return subprocess.run(
+            [str(ROOT / "bin" / "st"), *args],
+            cwd=self.problem_dir,
+            env=env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+
+    def write_echo_program(self) -> None:
+        self.main_cpp.write_text(
+            "#include <iostream>\n"
+            "using namespace std;\n"
+            "int main(){ long long x; if(cin >> x) cout << x << '\\n'; }\n",
+            encoding="utf-8",
+        )
+
+    def test_secret_test_reports_ac_without_penalty(self) -> None:
+        self.write_echo_program()
+        (self.secret_dir / "one.in").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "one.out").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "two.in").write_text("2\n", encoding="utf-8")
+        (self.secret_dir / "two.out").write_text("2\n", encoding="utf-8")
+
+        result = self.run_st("in", "out")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "AC 2 / 2\n")
+
+    def test_secret_test_runs_all_cases_and_keeps_penalty(self) -> None:
+        self.write_echo_program()
+        (self.secret_dir / "one.in").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "one.out").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "two.in").write_text("2\n", encoding="utf-8")
+        (self.secret_dir / "two.out").write_text("wrong\n", encoding="utf-8")
+
+        first = self.run_st("in", "out")
+        (self.secret_dir / "two.out").write_text("2\n", encoding="utf-8")
+        second = self.run_st("in", "out")
+
+        self.assertNotEqual(first.returncode, 0)
+        self.assertEqual(first.stdout, "WA(1) 1 / 2\n")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertEqual(second.stdout, "AC(1) 2 / 2\n")
+
+    def test_secret_test_supports_missing_input_extension(self) -> None:
+        self.write_echo_program()
+        (self.secret_dir / "one").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "one.out").write_text("1\n", encoding="utf-8")
+
+        result = self.run_st("_", "out")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "AC 1 / 1\n")
+
+    def test_compile_error_does_not_increment_penalty(self) -> None:
+        self.main_cpp.write_text("int main( {", encoding="utf-8")
+        (self.secret_dir / "one.in").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "one.out").write_text("1\n", encoding="utf-8")
+
+        ce = self.run_st("in", "out")
+        self.write_echo_program()
+        ac = self.run_st("in", "out")
+
+        self.assertNotEqual(ce.returncode, 0)
+        self.assertEqual(ce.stdout, "CE\n")
+        self.assertEqual(ac.returncode, 0, ac.stderr)
+        self.assertEqual(ac.stdout, "AC 1 / 1\n")
+
+    def test_reset_clears_penalty(self) -> None:
+        self.write_echo_program()
+        (self.secret_dir / "one.in").write_text("1\n", encoding="utf-8")
+        (self.secret_dir / "one.out").write_text("wrong\n", encoding="utf-8")
+
+        first = self.run_st("in", "out")
+        reset = self.run_st("--reset")
+        (self.secret_dir / "one.out").write_text("1\n", encoding="utf-8")
+        ac = self.run_st("in", "out")
+
+        self.assertEqual(first.stdout, "WA(1) 0 / 1\n")
+        self.assertEqual(reset.returncode, 0, reset.stderr)
+        self.assertEqual(reset.stdout, "penalty reset\n")
+        self.assertEqual(ac.stdout, "AC 1 / 1\n")
 
 
 class LibraryInsertUnitTests(unittest.TestCase):
@@ -749,6 +935,8 @@ class NewWorkCommandTests(unittest.TestCase):
             self.assertTrue((problem_dir / "main.py").is_file())
             self.assertTrue((problem_dir / "test" / "sample-1.in").is_file())
             self.assertTrue((problem_dir / "randomTest" / "gen.cpp").is_file())
+            self.assertTrue((problem_dir / "secret").is_dir())
+            self.assertEqual(list((problem_dir / "secret").iterdir()), [])
 
     def test_default_template_contains_shared_directories(self) -> None:
         self.assertTrue((ROOT / "template" / "default" / "test" / "sample-1.in").is_file())

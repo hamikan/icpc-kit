@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -n "${ICPC_KIT:-}" ]; then
+  ROOT="$ICPC_KIT"
+else
+  ROOT="$(CDPATH= cd -P "$(dirname "$0")/.." && pwd)"
+fi
+
+python3 "$ROOT/scripts/secret_test/secret_test.py" "$@"

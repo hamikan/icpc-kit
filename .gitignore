@@ -4,6 +4,7 @@ submit.cpp
 combined.cpp
 *.dSYM/
 __pycache__/
+.st/
 ICPC/
 work*/**/randomTest/.rt/
 .vscode/
