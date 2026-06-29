@@ -608,7 +608,29 @@ class SecretTestUnitTests(unittest.TestCase):
             self.secret_test.run_binary = original_run_binary
 
         self.assertEqual(result, ("TLE", 1, 4))
-        self.assertEqual(calls, ["ac", "re", "tle", "wa"])
+        self.assertEqual(calls, ["ac", "ac", "re", "tle", "tle", "wa"])
+
+    def test_tle_is_retried_once_before_judging(self) -> None:
+        (self.secret_dir / "sample.in").write_text("sample", encoding="utf-8")
+        (self.secret_dir / "sample.out").write_text("ok", encoding="utf-8")
+        pairs = self.secret_test.collect_case_pairs(self.secret_dir, "in", "out")
+        calls: list[str] = []
+        original_run_binary = self.secret_test.run_binary
+
+        def fake_run_binary(problem_dir: Path, input_data: bytes, timeout: float):
+            calls.append(input_data.decode())
+            if len(calls) == 2:
+                return self.secret_test.RunResult(status="TLE", stdout=b"", returncode=124)
+            return self.secret_test.RunResult(status="AC", stdout=b"ok\n", returncode=0)
+
+        self.secret_test.run_binary = fake_run_binary
+        try:
+            result = self.secret_test.run_cases(self.problem_dir, pairs, timeout=2.0)
+        finally:
+            self.secret_test.run_binary = original_run_binary
+
+        self.assertEqual(result, ("AC", 1, 1))
+        self.assertEqual(calls, ["sample", "sample", "sample"])
 
 
 class SecretTestCommandTests(unittest.TestCase):
