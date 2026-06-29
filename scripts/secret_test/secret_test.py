@@ -4,6 +4,7 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -12,6 +13,7 @@ from typing import List, Optional, Tuple
 DEFAULT_INPUT_EXTENSION = "in"
 DEFAULT_OUTPUT_EXTENSION = "out"
 DEFAULT_TIMEOUT_SECONDS = 2.0
+TLE_CONFIRMATION_RUNS = 2
 COMPILE_FLAGS = [
     "-std=gnu++20",
     "-O2",
@@ -204,22 +206,25 @@ def compile_cpp(problem_dir: Path, root: Path) -> bool:
     return result.returncode == 0
 
 
-def run_binary(problem_dir: Path, input_data: bytes, timeout: float) -> RunResult:
+def run_binary(problem_dir: Path, input_path: Path, timeout: float) -> RunResult:
     try:
-        result = subprocess.run(
-            ["./a.out"],
-            cwd=problem_dir,
-            input=input_data,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=timeout,
-        )
+        with input_path.open("rb") as input_file, tempfile.TemporaryFile() as output_file:
+            result = subprocess.run(
+                ["./a.out"],
+                cwd=problem_dir,
+                stdin=input_file,
+                stdout=output_file,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout,
+            )
+            output_file.seek(0)
+            stdout = output_file.read()
     except subprocess.TimeoutExpired as exc:
-        return RunResult(status="TLE", stdout=exc.output or b"", returncode=124)
+        return RunResult(status="TLE", stdout=b"", returncode=124)
 
     if result.returncode != 0:
-        return RunResult(status="RE", stdout=result.stdout, returncode=result.returncode)
-    return RunResult(status="AC", stdout=result.stdout, returncode=0)
+        return RunResult(status="RE", stdout=stdout, returncode=result.returncode)
+    return RunResult(status="AC", stdout=stdout, returncode=0)
 
 
 def judge_output(output: bytes, expected: bytes) -> bool:
@@ -229,11 +234,13 @@ def judge_output(output: bytes, expected: bytes) -> bool:
 def run_cases(problem_dir: Path, pairs: List[CasePair], timeout: float) -> Tuple[str, int, int]:
     status = "AC"
     accepted = 0
-    run_binary(problem_dir, pairs[0].input_path.read_bytes(), timeout)
+    run_binary(problem_dir, pairs[0].input_path, timeout)
     for pair in pairs:
-        result = run_binary(problem_dir, pair.input_path.read_bytes(), timeout)
-        if result.status == "TLE":
-            result = run_binary(problem_dir, pair.input_path.read_bytes(), timeout)
+        result = run_binary(problem_dir, pair.input_path, timeout)
+        for _ in range(TLE_CONFIRMATION_RUNS - 1):
+            if result.status != "TLE":
+                break
+            result = run_binary(problem_dir, pair.input_path, timeout)
         if result.status == "AC" and judge_output(result.stdout, pair.expected_path.read_bytes()):
             accepted += 1
             continue
