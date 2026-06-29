@@ -590,8 +590,8 @@ class SecretTestUnitTests(unittest.TestCase):
         calls: list[str] = []
         original_run_binary = self.secret_test.run_binary
 
-        def fake_run_binary(problem_dir: Path, input_data: bytes, timeout: float):
-            name = input_data.decode()
+        def fake_run_binary(problem_dir: Path, input_path: Path, timeout: float):
+            name = input_path.read_text(encoding="utf-8")
             calls.append(name)
             if name == "ac":
                 return self.secret_test.RunResult(status="AC", stdout=b"ok\n", returncode=0)
@@ -610,15 +610,15 @@ class SecretTestUnitTests(unittest.TestCase):
         self.assertEqual(result, ("TLE", 1, 4))
         self.assertEqual(calls, ["ac", "ac", "re", "tle", "tle", "wa"])
 
-    def test_tle_is_retried_once_before_judging(self) -> None:
+    def test_tle_is_retried_until_a_later_run_finishes_before_judging(self) -> None:
         (self.secret_dir / "sample.in").write_text("sample", encoding="utf-8")
         (self.secret_dir / "sample.out").write_text("ok", encoding="utf-8")
         pairs = self.secret_test.collect_case_pairs(self.secret_dir, "in", "out")
         calls: list[str] = []
         original_run_binary = self.secret_test.run_binary
 
-        def fake_run_binary(problem_dir: Path, input_data: bytes, timeout: float):
-            calls.append(input_data.decode())
+        def fake_run_binary(problem_dir: Path, input_path: Path, timeout: float):
+            calls.append(input_path.read_text(encoding="utf-8"))
             if len(calls) == 2:
                 return self.secret_test.RunResult(status="TLE", stdout=b"", returncode=124)
             return self.secret_test.RunResult(status="AC", stdout=b"ok\n", returncode=0)
@@ -631,6 +631,18 @@ class SecretTestUnitTests(unittest.TestCase):
 
         self.assertEqual(result, ("AC", 1, 1))
         self.assertEqual(calls, ["sample", "sample", "sample"])
+
+    def test_run_binary_reads_stdin_from_input_file(self) -> None:
+        binary = self.problem_dir / "a.out"
+        input_path = self.problem_dir / "input.txt"
+        binary.write_text("#!/bin/sh\ncat\n", encoding="utf-8")
+        binary.chmod(0o755)
+        input_path.write_text("hello\n", encoding="utf-8")
+
+        result = self.secret_test.run_binary(self.problem_dir, input_path, timeout=2.0)
+
+        self.assertEqual(result.status, "AC")
+        self.assertEqual(result.stdout, b"hello\n")
 
 
 class SecretTestCommandTests(unittest.TestCase):
